@@ -3,8 +3,9 @@ package main
 import (
 	"testing"
 
-	"github.com/coreos/dex/connector/mock"
-	"github.com/coreos/dex/connector/oidc"
+	"encoding/json"
+
+	"github.com/coreos/dex/connector/config"
 	"github.com/coreos/dex/storage"
 	"github.com/coreos/dex/storage/sql"
 	"github.com/ghodss/yaml"
@@ -34,14 +35,6 @@ connectors:
 - type: mockCallback
   id: mock
   name: Example
-- type: oidc
-  id: google
-  name: Google
-  config:
-    issuer: https://accounts.google.com
-    clientID: foo
-    clientSecret: bar
-    redirectURI: http://127.0.0.1:5556/dex/callback/google
 
 enablePasswordDB: true
 staticPasswords:
@@ -86,23 +79,12 @@ logger:
 				},
 			},
 		},
-		StaticConnectors: []Connector{
+		StaticConnectors: []config.ConnectorConfig{
 			{
 				Type:   "mockCallback",
 				ID:     "mock",
 				Name:   "Example",
-				Config: &mock.CallbackConfig{},
-			},
-			{
-				Type: "oidc",
-				ID:   "google",
-				Name: "Google",
-				Config: &oidc.Config{
-					Issuer:       "https://accounts.google.com",
-					ClientID:     "foo",
-					ClientSecret: "bar",
-					RedirectURI:  "http://127.0.0.1:5556/dex/callback/google",
-				},
+				Config: json.RawMessage{},
 			},
 		},
 		EnablePasswordDB: true,

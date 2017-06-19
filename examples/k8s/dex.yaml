@@ -64,14 +64,26 @@ data:
       tlsCert: /etc/dex/tls/tls.crt
       tlsKey: /etc/dex/tls/tls.key
     connectors:
-    - type: github
-      id: github
-      name: GitHub
+    - type: extragroups
+      id: extragroups
+      name: extragroups
       config:
-        clientID: $GITHUB_CLIENT_ID
-        clientSecret: $GITHUB_CLIENT_SECRET
-        redirectURI: https://dex.example.com:32000/callback
-        org: kubernetes
+        connector:
+          id: github
+          type: github
+          name: GitHub
+          config:
+            clientID: $GITHUB_CLIENT_ID
+            clientSecret: $GITHUB_CLIENT_SECRET
+            redirectURI: https://dex.example.com:32000/callback
+            org: kubernetes
+        groupsources:
+          - type: mock
+            config:
+              groups:
+                - group1
+                - group2
+                - group3
     oauth2:
       skipApprovalScreen: true
 

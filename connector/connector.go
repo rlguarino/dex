@@ -3,7 +3,13 @@ package connector
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"net/http"
+	"os"
+
+	"github.com/Sirupsen/logrus"
+	"github.com/coreos/dex/storage"
 )
 
 // Connector is a mechanism for federating login to a remote identity service.
@@ -93,4 +99,35 @@ type RefreshConnector interface {
 	// connector should attempt to update the identity object to reflect any
 	// changes since the token was last refreshed.
 	Refresh(ctx context.Context, s Scopes, identity Identity) (Identity, error)
+}
+
+// Factory is an interface which can be used to open a concrete initialized implementation of a Connector.
+type Factory interface {
+	Open(logrus.FieldLogger) (Connector, error)
+}
+
+// OpenConnector returns the concrete and initialized implementation of a connector given a storage
+// connector object and a map of connector types to ConnectorFactory objects.
+func OpenConnector(logger logrus.FieldLogger, conn storage.Connector, factoryMap map[string]func() Factory) (Connector, error) {
+	var c Connector
+
+	f, ok := factoryMap[conn.Type]
+	if !ok {
+		return c, fmt.Errorf("unknown connector type %q", conn.Type)
+	}
+
+	connConfig := f()
+	if len(conn.Config) != 0 {
+		data := []byte(os.ExpandEnv(string(conn.Config)))
+		if err := json.Unmarshal(data, connConfig); err != nil {
+			return c, fmt.Errorf("parse connector config: %v", err)
+		}
+	}
+
+	c, err := connConfig.Open(logger)
+	if err != nil {
+		return c, fmt.Errorf("failed to create connector %s: %v", conn.ID, err)
+	}
+
+	return c, nil
 }

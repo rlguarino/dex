@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -19,6 +18,7 @@ import (
 	"github.com/gorilla/mux"
 
 	"github.com/coreos/dex/connector"
+	"github.com/coreos/dex/connector/extragroups"
 	"github.com/coreos/dex/connector/github"
 	"github.com/coreos/dex/connector/gitlab"
 	"github.com/coreos/dex/connector/ldap"
@@ -374,48 +374,19 @@ func (s *Server) startGarbageCollection(ctx context.Context, frequency time.Dura
 	return
 }
 
-// ConnectorConfig is a configuration that can open a connector.
-type ConnectorConfig interface {
-	Open(logrus.FieldLogger) (connector.Connector, error)
-}
-
 // ConnectorsConfig variable provides an easy way to return a config struct
 // depending on the connector type.
-var ConnectorsConfig = map[string]func() ConnectorConfig{
-	"mockCallback": func() ConnectorConfig { return new(mock.CallbackConfig) },
-	"mockPassword": func() ConnectorConfig { return new(mock.PasswordConfig) },
-	"ldap":         func() ConnectorConfig { return new(ldap.Config) },
-	"github":       func() ConnectorConfig { return new(github.Config) },
-	"gitlab":       func() ConnectorConfig { return new(gitlab.Config) },
-	"oidc":         func() ConnectorConfig { return new(oidc.Config) },
-	"saml":         func() ConnectorConfig { return new(saml.Config) },
+var ConnectorsConfig = map[string]func() connector.Factory{
+	"mockCallback": func() connector.Factory { return new(mock.CallbackConfig) },
+	"mockPassword": func() connector.Factory { return new(mock.PasswordConfig) },
+	"ldap":         func() connector.Factory { return new(ldap.Config) },
+	"github":       func() connector.Factory { return new(github.Config) },
+	"gitlab":       func() connector.Factory { return new(gitlab.Config) },
+	"oidc":         func() connector.Factory { return new(oidc.Config) },
+	"saml":         func() connector.Factory { return new(saml.Config) },
+	"extragroups":  func() connector.Factory { return new(extragroups.Config) },
 	// Keep around for backwards compatibility.
-	"samlExperimental": func() ConnectorConfig { return new(saml.Config) },
-}
-
-// openConnector will parse the connector config and open the connector.
-func openConnector(logger logrus.FieldLogger, conn storage.Connector) (connector.Connector, error) {
-	var c connector.Connector
-
-	f, ok := ConnectorsConfig[conn.Type]
-	if !ok {
-		return c, fmt.Errorf("unknown connector type %q", conn.Type)
-	}
-
-	connConfig := f()
-	if len(conn.Config) != 0 {
-		data := []byte(string(conn.Config))
-		if err := json.Unmarshal(data, connConfig); err != nil {
-			return c, fmt.Errorf("parse connector config: %v", err)
-		}
-	}
-
-	c, err := connConfig.Open(logger)
-	if err != nil {
-		return c, fmt.Errorf("failed to create connector %s: %v", conn.ID, err)
-	}
-
-	return c, nil
+	"samlExperimental": func() connector.Factory { return new(saml.Config) },
 }
 
 // OpenConnector updates server connector map with specified connector object.
@@ -426,7 +397,7 @@ func (s *Server) OpenConnector(conn storage.Connector) (Connector, error) {
 		c = newPasswordDB(s.storage)
 	} else {
 		var err error
-		c, err = openConnector(s.logger.WithField("connector", conn.Name), conn)
+		c, err = connector.OpenConnector(s.logger.WithField("connector", conn.Name), conn, ConnectorsConfig)
 		if err != nil {
 			return Connector{}, fmt.Errorf("failed to open connector: %v", err)
 		}

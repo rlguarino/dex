@@ -9,6 +9,7 @@ import (
 	"github.com/Sirupsen/logrus"
 	"golang.org/x/crypto/bcrypt"
 
+	"github.com/coreos/dex/connector/config"
 	"github.com/coreos/dex/server"
 	"github.com/coreos/dex/storage"
 	"github.com/coreos/dex/storage/kubernetes"
@@ -30,7 +31,7 @@ type Config struct {
 
 	// StaticConnectors are user defined connectors specified in the ConfigMap
 	// Write operations, like updating a connector, will fail.
-	StaticConnectors []Connector `json:"connectors"`
+	StaticConnectors []config.ConnectorConfig `json:"connectors"`
 
 	// StaticClients cause the server to use this list of clients rather than
 	// querying the storage. Write operations, like creating a client, will fail.
@@ -157,65 +158,6 @@ func (s *Storage) UnmarshalJSON(b []byte) error {
 		Config: storageConfig,
 	}
 	return nil
-}
-
-// Connector is a magical type that can unmarshal YAML dynamically. The
-// Type field determines the connector type, which is then customized for Config.
-type Connector struct {
-	Type string `json:"type"`
-	Name string `json:"name"`
-	ID   string `json:"id"`
-
-	Config server.ConnectorConfig `json:"config"`
-}
-
-// UnmarshalJSON allows Connector to implement the unmarshaler interface to
-// dynamically determine the type of the connector config.
-func (c *Connector) UnmarshalJSON(b []byte) error {
-	var conn struct {
-		Type string `json:"type"`
-		Name string `json:"name"`
-		ID   string `json:"id"`
-
-		Config json.RawMessage `json:"config"`
-	}
-	if err := json.Unmarshal(b, &conn); err != nil {
-		return fmt.Errorf("parse connector: %v", err)
-	}
-	f, ok := server.ConnectorsConfig[conn.Type]
-	if !ok {
-		return fmt.Errorf("unknown connector type %q", conn.Type)
-	}
-
-	connConfig := f()
-	if len(conn.Config) != 0 {
-		data := []byte(os.ExpandEnv(string(conn.Config)))
-		if err := json.Unmarshal(data, connConfig); err != nil {
-			return fmt.Errorf("parse connector config: %v", err)
-		}
-	}
-	*c = Connector{
-		Type:   conn.Type,
-		Name:   conn.Name,
-		ID:     conn.ID,
-		Config: connConfig,
-	}
-	return nil
-}
-
-// ToStorageConnector converts an object to storage connector type.
-func ToStorageConnector(c Connector) (storage.Connector, error) {
-	data, err := json.Marshal(c.Config)
-	if err != nil {
-		return storage.Connector{}, fmt.Errorf("failed to marshal connector config: %v", err)
-	}
-
-	return storage.Connector{
-		ID:     c.ID,
-		Type:   c.Type,
-		Name:   c.Name,
-		Config: data,
-	}, nil
 }
 
 // Expiry holds configuration for the validity period of components.
